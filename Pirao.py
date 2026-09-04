@@ -78,13 +78,25 @@ else:
     
     parcela_actual = st.session_state["parcela"]
     
+    # 🌟 CREAMOS UNA COPIA SOLO PARA LA VISTA (Oculta IDs y arregla textos)
+    df_visual = df_pagos.drop(columns=["id", "id_pago"], errors='ignore').rename(
+        columns={
+            "parcela": "Parcela",
+            "mes": "Mes",
+            "ano": "Año",
+            "monto": "Monto ($)",
+            "estado": "Estado",
+            "link_comprobante": "Comprobante"
+        }
+    )
+    
     # VISTA ADMINISTRADOR
     if parcela_actual == "Admin":
         st.title("🛠️ Panel de Administración - Alto Pirao")
         
         st.subheader("Pagos Pendientes de Aprobación")
-        # Filtramos estado pendiente (en minúscula la columna, mayúscula el valor)
-        df_pendientes = df_pagos[df_pagos["estado"] == "Pendiente"]
+        # Ahora filtramos usando la columna ya renombrada con mayúscula ("Estado")
+        df_pendientes = df_visual[df_visual["Estado"] == "Pendiente"]
         
         if df_pendientes.empty:
             st.success("No hay pagos pendientes por revisar.")
@@ -93,14 +105,15 @@ else:
             st.info("Aquí agregaremos la lógica para cambiar el estado de 'Pendiente' a 'Aprobado'.")
             
         st.subheader("Todos los registros (Historial histórico)")
-        st.dataframe(df_pagos, use_container_width=True)
+        st.dataframe(df_visual, use_container_width=True)
 
     # VISTA VECINO
     else:
         st.title(f"🏡 Panel de Parcela {parcela_actual}")
         
         st.subheader("Historial de Pagos")
-        mis_pagos = df_pagos[df_pagos["parcela"] == parcela_actual]
+        # Filtramos usando la columna ya renombrada ("Parcela")
+        mis_pagos = df_visual[df_visual["Parcela"] == parcela_actual]
         
         if mis_pagos.empty:
             st.info("Aún no tienes pagos registrados en el sistema.")
