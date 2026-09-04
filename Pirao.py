@@ -95,7 +95,7 @@ else:
         st.title("🛠️ Panel de Administración - Alto Pirao")
         
         st.subheader("Pagos Pendientes de Aprobación")
-        # Ahora filtramos usando la columna ya renombrada con mayúscula ("Estado")
+        # Filtramos usando la columna ya renombrada con mayúscula ("Estado")
         df_pendientes = df_visual[df_visual["Estado"] == "Pendiente"]
         
         if df_pendientes.empty:
@@ -159,7 +159,10 @@ else:
                         supabase.storage.from_("comprobantes").upload(
                             path=ruta_archivo,
                             file=archivo.getvalue(),
-                            file_options={"content-type": archivo.type}
+                            file_options={
+                                "content-type": archivo.type,
+                                "x-upsert": "true" # Permite reescribir si la imagen ya se había intentado subir
+                            }
                         )
                         
                         # 3. Obtener el link público del archivo recién subido
@@ -170,7 +173,7 @@ else:
                             "id_pago": f"P{parcela_actual}-2026-{mes_pago[:3].upper()}",
                             "parcela": str(parcela_actual),
                             "mes": mes_pago,
-                            "ano": 2026, # Registramos el año actual
+                            "ano": 2026, 
                             "monto": monto,
                             "estado": "Pendiente",
                             "link_comprobante": link_publico
