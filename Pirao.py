@@ -2,42 +2,52 @@ import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
 
-# --- CONEXIÓN A SUPABASE ---
+# --- 1. CONFIGURACIÓN BÁSICA ---
+st.set_page_config(page_title="Gastos Comunes - Alto Pirao", layout="centered")
+
+# --- 2. CONEXIÓN A SUPABASE ---
 @st.cache_resource
 def init_connection():
+    # Llama a las variables secretas de Streamlit
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
 
 supabase = init_connection()
 
-# --- CARGA DE DATOS REALES ---
+# --- 3. CARGA DE DATOS SEGUROS ---
 @st.cache_data(ttl=60) # Refresca los datos cada 60 segundos
 def cargar_datos():
     # Leer tabla directorio
     respuesta_dir = supabase.table("directorio").select("*").execute()
-    df_directorio = pd.DataFrame(respuesta_dir.data)
+    # Prevención de errores: si está vacío, crea columnas vacías
+    if respuesta_dir.data:
+        df_directorio = pd.DataFrame(respuesta_dir.data)
+    else:
+        df_directorio = pd.DataFrame(columns=["parcela", "pin"])
     
     # Leer tabla de pagos
     respuesta_pagos = supabase.table("registro_pagos").select("*").execute()
-    df_pagos = pd.DataFrame(respuesta_pagos.data)
+    # Prevención de errores: si está vacío, crea columnas vacías
+    if respuesta_pagos.data:
+        df_pagos = pd.DataFrame(respuesta_pagos.data)
+    else:
+        df_pagos = pd.DataFrame(columns=["id", "id_pago", "parcela", "mes", "ano", "monto", "estado", "link_comprobante"])
     
     return df_directorio, df_pagos
 
 df_directorio, df_pagos = cargar_datos()
 
-# --- 2. CONTROL DE SESIÓN ---
-# Verificamos si el usuario ya inició sesión
+# --- 4. CONTROL DE SESIÓN ---
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
     st.session_state["parcela"] = ""
 
-# Función para cerrar sesión
 def cerrar_sesion():
     st.session_state["autenticado"] = False
     st.session_state["parcela"] = ""
 
-# --- 3. PANTALLA DE LOGIN ---
+# --- 5. PANTALLA DE LOGIN ---
 if not st.session_state["autenticado"]:
     st.title("🔐 Acceso Alto Pirao")
     st.markdown("Ingrese sus credenciales para revisar o informar el pago de gastos comunes.")
@@ -48,7 +58,7 @@ if not st.session_state["autenticado"]:
         btn_ingresar = st.form_submit_button("Ingresar")
         
         if btn_ingresar:
-            # Filtramos el dataframe para ver si existe coincidencia
+            # Filtro en minúsculas para coincidir con Supabase
             usuario_valido = df_directorio[
                 (df_directorio["parcela"] == input_parcela) & 
                 (df_directorio["pin"] == input_pin)
@@ -57,13 +67,12 @@ if not st.session_state["autenticado"]:
             if not usuario_valido.empty:
                 st.session_state["autenticado"] = True
                 st.session_state["parcela"] = input_parcela
-                st.rerun() # Recarga la página para mostrar el panel
+                st.rerun()
             else:
                 st.error("Número de parcela o PIN incorrectos. Intente nuevamente.")
 
-# --- 4. PANTALLA PRINCIPAL (Una vez dentro) ---
+# --- 6. PANTALLA PRINCIPAL (Una vez dentro) ---
 else:
-    # Menú lateral para cerrar sesión
     st.sidebar.title(f"Bienvenido, Parcela {st.session_state['parcela']}")
     st.sidebar.button("Cerrar Sesión", on_click=cerrar_sesion)
     
@@ -74,7 +83,7 @@ else:
         st.title("🛠️ Panel de Administración - Alto Pirao")
         
         st.subheader("Pagos Pendientes de Aprobación")
-        # Filtramos solo lo que está pendiente en todo el condominio
+        # Filtramos estado pendiente (en minúscula la columna, mayúscula el valor)
         df_pendientes = df_pagos[df_pagos["estado"] == "Pendiente"]
         
         if df_pendientes.empty:
@@ -91,19 +100,22 @@ else:
         st.title(f"🏡 Panel de Parcela {parcela_actual}")
         
         st.subheader("Historial de Pagos")
-        # Filtramos la base de datos SOLO para la parcela que inició sesión
         mis_pagos = df_pagos[df_pagos["parcela"] == parcela_actual]
-        st.dataframe(mis_pagos, use_container_width=True)
+        
+        if mis_pagos.empty:
+            st.info("Aún no tienes pagos registrados en el sistema.")
+        else:
+            st.dataframe(mis_pagos, use_container_width=True)
         
         st.divider()
         
         st.subheader("Informar Nuevo Pago")
         with st.form("form_nuevo_pago"):
-            mes_pago = st.selectbox("Mes a pagar", ["Enero", "Febrero", "Marzo", "Abril", "Mayo"])
+            mes_pago = st.selectbox("Mes a pagar", ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"])
             monto = st.number_input("Monto pagado ($)", min_value=0, step=1000)
             archivo = st.file_uploader("Adjuntar comprobante de transferencia", type=["jpg", "png", "pdf"])
             
             submit_pago = st.form_submit_button("Enviar Comprobante")
             
             if submit_pago:
-                st.success("Esta función subirá el archivo a Google Drive y registrará el pago en Google Sheets.")
+                st.success("Esta función subirá el archivo a Supabase y registrará el pago.")
