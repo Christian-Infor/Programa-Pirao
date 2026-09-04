@@ -75,7 +75,7 @@ else:
         
         st.subheader("Pagos Pendientes de Aprobación")
         # Filtramos solo lo que está pendiente en todo el condominio
-        df_pendientes = df_pagos[df_pagos["Estado"] == "Pendiente"]
+        df_pendientes = df_pagos[df_pagos["estado"] == "Pendiente"]
         
         if df_pendientes.empty:
             st.success("No hay pagos pendientes por revisar.")
@@ -92,7 +92,7 @@ else:
         
         st.subheader("Historial de Pagos")
         # Filtramos la base de datos SOLO para la parcela que inició sesión
-        mis_pagos = df_pagos[df_pagos["Parcela"] == parcela_actual]
+        mis_pagos = df_pagos[df_pagos["parcela"] == parcela_actual]
         st.dataframe(mis_pagos, use_container_width=True)
         
         st.divider()
