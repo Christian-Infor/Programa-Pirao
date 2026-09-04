@@ -56,6 +56,12 @@ def cargar_datos():
 
 df_directorio, df_pagos, df_gastos = cargar_datos()
 
+# Función auxiliar para formatear números a pesos chilenos (Ej: 10000 -> $10.000)
+def formato_clp(valor):
+    if pd.isna(valor) or valor == 0:
+        return "$0"
+    return f"${int(valor):,}".replace(",", ".")
+
 # --- 4. CONTROL DE SESIÓN ---
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
@@ -96,12 +102,17 @@ else:
     
     parcela_actual = st.session_state["parcela"]
     
-    df_visual = df_pagos.drop(columns=["id", "id_pago"], errors='ignore').rename(
+    # Preparamos el DataFrame visual de pagos aplicando formato chileno a los montos
+    df_visual = df_pagos.drop(columns=["id", "id_pago"], errors='ignore').copy()
+    if not df_visual.empty and "monto" in df_visual.columns:
+        df_visual["monto"] = df_visual["monto"].apply(formato_clp)
+        
+    df_visual = df_visual.rename(
         columns={
             "parcela": "Parcela",
             "mes": "Mes",
             "ano": "Año",
-            "monto": "Monto ($)",
+            "monto": "Monto",
             "estado": "Estado",
             "link_comprobante": "Comprobante"
         }
@@ -133,7 +144,7 @@ else:
                         col1, col2, col3, col4 = st.columns(4)
                         col1.write(f"**Parcela:** {fila['parcela']}")
                         col2.write(f"**Mes:** {fila['mes']}")
-                        col3.write(f"**Monto:** ${fila['monto']}")
+                        col3.write(f"**Monto:** {formato_clp(fila['monto'])}")
                         col4.markdown(f"[📎 Ver Comprobante]({fila['link_comprobante']})")
                         
                         btn_col1, btn_col2 = st.columns(2)
@@ -147,14 +158,12 @@ else:
                             cargar_datos.clear()
                             st.rerun()
 
-        # --- PESTAÑA 2: MATRIZ ANUAL (Fase 3) ---
+        # --- PESTAÑA 2: MATRIZ ANUAL (Con formato monetario chileno) ---
         with tab_matriz:
             st.subheader("Matriz de Estado de Cuotas")
-            # Selector de año para ver la matriz de 2025 o 2026
             ano_seleccionado = st.selectbox("Seleccione el Año a Visualizar", [2026, 2025], index=0)
             
             if not df_pagos.empty:
-                # Filtramos por año y aprobados
                 df_filtrado = df_pagos[(df_pagos["estado"] == "Aprobado") & (df_pagos["ano"] == ano_seleccionado)].copy()
                 if not df_filtrado.empty:
                     df_filtrado["parcela_num"] = pd.to_numeric(df_filtrado["parcela"], errors="coerce")
@@ -165,8 +174,11 @@ else:
                     meses_existentes = [m for m in meses_orden if m in matriz.columns]
                     matriz = matriz[meses_existentes]
                     
+                    # Aplicamos formato CLP a cada celda de la matriz
+                    matriz_formateada = matriz.applymap(formato_clp)
+                    
                     with st.container():
-                        st.dataframe(matriz, use_container_width=True, height=500)
+                        st.dataframe(matriz_formateada, use_container_width=True, height=500)
                 else:
                     st.info(f"Aún no hay pagos aprobados para el año {ano_seleccionado}.")
             else:
@@ -216,17 +228,21 @@ else:
             st.divider()
             st.markdown("### Historial de Egresos Registrados")
             if not df_gastos.empty:
-                df_gastos_visual = df_gastos.drop(columns=["id"], errors="ignore").rename(
+                df_g_visual = df_gastos.copy()
+                if "monto" in df_g_visual.columns:
+                    df_g_visual["monto"] = df_g_visual["monto"].apply(formato_clp)
+                
+                df_g_visual = df_g_visual.drop(columns=["id"], errors="ignore").rename(
                     columns={
                         "fecha": "Fecha",
                         "motivo": "Motivo",
-                        "monto": "Monto ($)",
+                        "monto": "Monto",
                         "forma_pago": "Forma de Pago",
                         "link_comprobante": "Boleta"
                     }
                 )
                 st.dataframe(
-                    df_gastos_visual, 
+                    df_g_visual, 
                     use_container_width=True, 
                     hide_index=True,
                     column_config={"Boleta": st.column_config.LinkColumn("Ver Boleta")}
@@ -243,7 +259,6 @@ else:
                 column_config={"Comprobante": st.column_config.LinkColumn("Ver Comprobante")}
             )
 
-        # --- PESTAÑA 5: MIGRAR EXCEL COMPLETO (2025, 2026 y Gastos) ---
         with tab_migrar:
             st.subheader("⚡ Herramienta de Migración Histórica Completa desde Excel")
             st.markdown("Sube tu archivo de Excel. El sistema importará automáticamente las cuotas de **2026**, las de **2025** y los registros de la pestaña **Gastos**.")
@@ -258,7 +273,6 @@ else:
                             registros_pagos = []
                             meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 
-                            # 1. Migrar Cuotas 2026
                             try:
                                 df_c26 = pd.read_excel(excel_bytes, sheet_name="Cuotas 2026")
                                 df_c26.columns = [str(c).strip().lower() for c in df_c26.columns]
@@ -282,7 +296,6 @@ else:
                             except Exception as ex:
                                 st.warning(f"No se pudo leer Cuotas 2026: {ex}")
 
-                            # 2. Migrar Cuotas 2025
                             try:
                                 excel_bytes.seek(0)
                                 df_c25 = pd.read_excel(excel_bytes, sheet_name="Cuotas 2025")
@@ -294,7 +307,6 @@ else:
                                     num_p = str(parcela_nombre).replace("Parcela", "").strip()
                                     for i, mes in enumerate(meses):
                                         val = row.iloc[i + 1]
-                                        # En 2025 a veces usan guiones '-' o textos vacíos
                                         if pd.notna(val) and isinstance(val, (int, float)) and val > 0:
                                             registros_pagos.append({
                                                 "id_pago": f"P{num_p}-2025-{mes[:3].upper()}",
@@ -311,7 +323,6 @@ else:
                             if registros_pagos:
                                 supabase.table("registro_pagos").upsert(registros_pagos).execute()
 
-                            # 3. Migrar Gastos
                             try:
                                 excel_bytes.seek(0)
                                 df_g = pd.read_excel(excel_bytes, sheet_name="Gastos")
