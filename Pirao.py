@@ -134,16 +134,11 @@ else:
             st.markdown("Vista cruzada de pagos aprobados por parcela y mes (Estilo Excel).")
             
             if not df_pagos.empty:
-                # Filtramos solo los aprobados para la matriz contable
                 df_aprobados = df_pagos[df_pagos["estado"] == "Aprobado"].copy()
                 if not df_aprobados.empty:
-                    # Creamos la tabla pivote (Matriz)
                     meses_orden = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
                     
-                    # Pivot table: Filas = Parcela, Columnas = Mes, Valores = Monto
                     matriz = df_aprobados.pivot_table(index="parcela", columns="mes", values="monto", fill_value=0)
-                    
-                    # Reindexar para ordenar los meses cronológicamente si existen
                     meses_existentes = [m for m in meses_orden if m in matriz.columns]
                     matriz = matriz[meses_existentes]
                     
@@ -157,7 +152,7 @@ else:
         with tab_gastos:
             st.subheader("Control de Gastos y Egresos del Condominio")
             
-            # Formulario para registrar un nuevo gasto
+            # Formulario para registrar un nuevo gasto con opción de adjuntar boleta
             with st.form("form_nuevo_gasto"):
                 col_g1, col_g2 = st.columns(2)
                 fecha_gasto = col_g1.date_input("Fecha del gasto", value=date.today())
@@ -165,18 +160,31 @@ else:
                 
                 motivo_gasto = st.text_input("Motivo o Detalle (Ej: CGE Electricidad, Compra de cámaras)")
                 forma_pago_gasto = st.selectbox("Forma de pago", ["Pagado directamente con fondos GC", "Reembolsado a Parcela"])
-                link_comp_gasto = st.text_input("Link del comprobante o boleta (Opcional)")
+                archivo_boleta = st.file_uploader("Adjuntar boleta/factura del gasto (Opcional)", type=["jpg", "png", "pdf"])
                 
                 submit_gasto = st.form_submit_button("Guardar Gasto")
                 
                 if submit_gasto:
                     if motivo_gasto and monto_gasto > 0:
+                        link_pub_boleta = ""
+                        
+                        # Si el admin adjuntó un archivo, lo subimos al bucket 'boletas-gastos'
+                        if archivo_boleta is not None:
+                            with st.spinner("Subiendo boleta a Supabase..."):
+                                ruta_boleta = f"gastos_{fecha_gasto}_{archivo_boleta.name}"
+                                supabase.storage.from_("boletas-gastos").upload(
+                                    path=ruta_boleta,
+                                    file=archivo_boleta.getvalue(),
+                                    file_options={"content-type": archivo_boleta.type, "x-upsert": "true"}
+                                )
+                                link_pub_boleta = supabase.storage.from_("boletas-gastos").get_public_url(ruta_boleta)
+                        
                         nuevo_gasto_dict = {
                             "fecha": str(fecha_gasto),
                             "motivo": motivo_gasto,
                             "monto": monto_gasto,
                             "forma_pago": forma_pago_gasto,
-                            "link_comprobante": link_comp_gasto
+                            "link_comprobante": link_pub_boleta
                         }
                         supabase.table("registro_gastos").insert(nuevo_gasto_dict).execute()
                         st.success("¡Gasto registrado exitosamente!")
@@ -188,7 +196,21 @@ else:
             st.divider()
             st.markdown("### Historial de Egresos Registrados")
             if not df_gastos.empty:
-                st.dataframe(df_gastos.drop(columns=["id"], errors="ignore"), use_container_width=True, hide_index=True)
+                df_gastos_visual = df_gastos.drop(columns=["id"], errors="ignore").rename(
+                    columns={
+                        "fecha": "Fecha",
+                        "motivo": "Motivo",
+                        "monto": "Monto ($)",
+                        "forma_pago": "Forma de Pago",
+                        "link_comprobante": "Boleta"
+                    }
+                )
+                st.dataframe(
+                    df_gastos_visual, 
+                    use_container_width=True, 
+                    hide_index=True,
+                    column_config={"Boleta": st.column_config.LinkColumn("Ver Boleta")}
+                )
             else:
                 st.info("No hay gastos registrados todavía.")
 
