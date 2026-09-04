@@ -189,14 +189,14 @@ else:
                                 supabase.storage.from_("boletas-gastos").upload(
                                     path=ruta_boleta,
                                     file=archivo_boleta.getvalue(),
-                                    file_options={"content-type": archivo_boleta.type, "x-upsert": "true"}
+                                    file_options={"content-type": archivo.type, "x-upsert": "true"}
                                 )
                                 link_pub_boleta = supabase.storage.from_("boletas-gastos").get_public_url(ruta_boleta)
                         
                         nuevo_gasto_dict = {
                             "fecha": str(fecha_gasto),
                             "motivo": motivo_gasto,
-                            "monto": monto_gasto,
+                            "monto": int(monto_gasto),
                             "forma_pago": forma_pago_gasto,
                             "link_comprobante": link_pub_boleta
                         }
@@ -248,7 +248,6 @@ else:
                 if st.button("🚀 Procesar e Importar Excel"):
                     try:
                         with st.spinner("Leyendo y migrando datos desde el Excel..."):
-                            # Leemos el archivo cargado directamente en memoria con BytesIO
                             excel_bytes = io.BytesIO(archivo_excel.getvalue())
                             
                             # 1. Migrar Cuotas 2026
@@ -271,7 +270,7 @@ else:
                                             "parcela": num_parcela,
                                             "mes": mes,
                                             "ano": 2026,
-                                            "monto": float(val),
+                                            "monto": int(val),  # <--- CORREGIDO A ENTERO AQUÍ
                                             "estado": "Aprobado",
                                             "link_comprobante": "https://dummyimage.com/600x400/000/fff&text=Migrado+desde+Excel"
                                         })
@@ -279,7 +278,6 @@ else:
                             if registros_pagos:
                                 supabase.table("registro_pagos").upsert(registros_pagos).execute()
 
-                            # Volvemos a ubicar el puntero del archivo para leer la otra pestaña
                             excel_bytes.seek(0)
                             
                             # 2. Migrar Gastos
@@ -296,7 +294,7 @@ else:
                                     registros_gastos.append({
                                         "fecha": str(fecha).split(" ")[0] if pd.notna(fecha) else "2026-01-01",
                                         "motivo": str(motivo),
-                                        "monto": float(monto),
+                                        "monto": int(monto),  # <--- CORREGIDO A ENTERO AQUÍ
                                         "forma_pago": str(forma_pago) if pd.notna(forma_pago) else "Pagado directamente con fondos GC",
                                         "link_comprobante": str(link_comp) if pd.notna(link_comp) else ""
                                     })
@@ -357,7 +355,7 @@ else:
                             "parcela": str(parcela_actual),
                             "mes": mes_pago,
                             "ano": 2026, 
-                            "monto": monto,
+                            "monto": int(monto),  # <--- CORREGIDO A ENTERO AQUÍ
                             "estado": "Pendiente",
                             "link_comprobante": link_publico
                         }
