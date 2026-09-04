@@ -147,33 +147,28 @@ else:
                             cargar_datos.clear()
                             st.rerun()
 
-        # --- PESTAÑA 2: MATRIZ ANUAL (Fase 3 - Corregida y Ordenada) ---
+        # --- PESTAÑA 2: MATRIZ ANUAL (Fase 3) ---
         with tab_matriz:
-            st.subheader("Matriz de Estado de Cuotas (2026)")
-            st.markdown("Vista cruzada de pagos aprobados por parcela y mes (Estilo Excel).")
+            st.subheader("Matriz de Estado de Cuotas")
+            # Selector de año para ver la matriz de 2025 o 2026
+            ano_seleccionado = st.selectbox("Seleccione el Año a Visualizar", [2026, 2025], index=0)
             
             if not df_pagos.empty:
-                df_aprobados = df_pagos[df_pagos["estado"] == "Aprobado"].copy()
-                if not df_aprobados.empty:
-                    # Convertimos parcela a entero temporalmente para ordenar numéricamente (1, 2, 3... 10, 11)
-                    df_aprobados["parcela_num"] = pd.to_numeric(df_aprobados["parcela"], errors="coerce")
-                    
+                # Filtramos por año y aprobados
+                df_filtrado = df_pagos[(df_pagos["estado"] == "Aprobado") & (df_pagos["ano"] == ano_seleccionado)].copy()
+                if not df_filtrado.empty:
+                    df_filtrado["parcela_num"] = pd.to_numeric(df_filtrado["parcela"], errors="coerce")
                     meses_orden = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
                     
-                    # Creamos la matriz agrupando y ordenando por la parcela numérica
-                    matriz = df_aprobados.pivot_table(index="parcela_num", columns="mes", values="monto", fill_value=0)
-                    
-                    # Renombramos el índice para que vuelva a decir "Parcela X" o simplemente el número limpio ordenado
+                    matriz = df_filtrado.pivot_table(index="parcela_num", columns="mes", values="monto", fill_value=0)
                     matriz.index = [f"Parcela {int(p)}" for p in matriz.index]
-                    
                     meses_existentes = [m for m in meses_orden if m in matriz.columns]
                     matriz = matriz[meses_existentes]
                     
-                    # Contenedor ancho especial para que la matriz respire sin apretarse
                     with st.container():
                         st.dataframe(matriz, use_container_width=True, height=500)
                 else:
-                    st.info("Aún no hay pagos aprobados para construir la matriz.")
+                    st.info(f"Aún no hay pagos aprobados para el año {ano_seleccionado}.")
             else:
                 st.info("No hay registros en la base de datos.")
 
@@ -248,73 +243,105 @@ else:
                 column_config={"Comprobante": st.column_config.LinkColumn("Ver Comprobante")}
             )
 
+        # --- PESTAÑA 5: MIGRAR EXCEL COMPLETO (2025, 2026 y Gastos) ---
         with tab_migrar:
-            st.subheader("⚡ Herramienta de Migración Histórica desde Excel")
-            st.markdown("Sube tu archivo de Excel a continuación para importar automáticamente los pagos de **Cuotas 2026** y los registros de la pestaña **Gastos** a Supabase.")
+            st.subheader("⚡ Herramienta de Migración Histórica Completa desde Excel")
+            st.markdown("Sube tu archivo de Excel. El sistema importará automáticamente las cuotas de **2026**, las de **2025** y los registros de la pestaña **Gastos**.")
             
             archivo_excel = st.file_uploader("Selecciona tu archivo Excel (.xlsx)", type=["xlsx"])
             
             if archivo_excel is not None:
-                if st.button("🚀 Procesar e Importar Excel"):
+                if st.button("🚀 Procesar e Importar Todo el Historial"):
                     try:
-                        with st.spinner("Leyendo y migrando datos desde el Excel..."):
+                        with st.spinner("Leyendo y migrando 2025, 2026 y Gastos..."):
                             excel_bytes = io.BytesIO(archivo_excel.getvalue())
-                            
-                            df_cuotas = pd.read_excel(excel_bytes, sheet_name="Cuotas 2026")
-                            df_cuotas.columns = [str(c).strip().lower() for c in df_cuotas.columns]
                             registros_pagos = []
-                            
-                            for index, row in df_cuotas.iterrows():
-                                parcela_nombre = row.iloc[0]
-                                if pd.isna(parcela_nombre) or "Parcela" not in str(parcela_nombre):
-                                    continue
-                                num_parcela = str(parcela_nombre).replace("Parcela", "").strip()
-                                meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-                                
-                                for i, mes in enumerate(meses):
-                                    val = row.iloc[i + 1]
-                                    if pd.notna(val) and isinstance(val, (int, float)) and val > 0:
-                                        registros_pagos.append({
-                                            "id_pago": f"P{num_parcela}-2026-{mes[:3].upper()}",
-                                            "parcela": num_parcela,
-                                            "mes": mes,
-                                            "ano": 2026,
-                                            "monto": int(val),
-                                            "estado": "Aprobado",
-                                            "link_comprobante": "https://dummyimage.com/600x400/000/fff&text=Migrado+desde+Excel"
-                                        })
-                            
+                            meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+
+                            # 1. Migrar Cuotas 2026
+                            try:
+                                df_c26 = pd.read_excel(excel_bytes, sheet_name="Cuotas 2026")
+                                df_c26.columns = [str(c).strip().lower() for c in df_c26.columns]
+                                for index, row in df_c26.iterrows():
+                                    parcela_nombre = row.iloc[0]
+                                    if pd.isna(parcela_nombre) or "Parcela" not in str(parcela_nombre):
+                                        continue
+                                    num_p = str(parcela_nombre).replace("Parcela", "").strip()
+                                    for i, mes in enumerate(meses):
+                                        val = row.iloc[i + 1]
+                                        if pd.notna(val) and isinstance(val, (int, float)) and val > 0:
+                                            registros_pagos.append({
+                                                "id_pago": f"P{num_p}-2026-{mes[:3].upper()}",
+                                                "parcela": num_p,
+                                                "mes": mes,
+                                                "ano": 2026,
+                                                "monto": int(val),
+                                                "estado": "Aprobado",
+                                                "link_comprobante": "https://dummyimage.com/600x400/000/fff&text=Migrado+Excel+2026"
+                                            })
+                            except Exception as ex:
+                                st.warning(f"No se pudo leer Cuotas 2026: {ex}")
+
+                            # 2. Migrar Cuotas 2025
+                            try:
+                                excel_bytes.seek(0)
+                                df_c25 = pd.read_excel(excel_bytes, sheet_name="Cuotas 2025")
+                                df_c25.columns = [str(c).strip().lower() for c in df_c25.columns]
+                                for index, row in df_c25.iterrows():
+                                    parcela_nombre = row.iloc[0]
+                                    if pd.isna(parcela_nombre) or "Parcela" not in str(parcela_nombre):
+                                        continue
+                                    num_p = str(parcela_nombre).replace("Parcela", "").strip()
+                                    for i, mes in enumerate(meses):
+                                        val = row.iloc[i + 1]
+                                        # En 2025 a veces usan guiones '-' o textos vacíos
+                                        if pd.notna(val) and isinstance(val, (int, float)) and val > 0:
+                                            registros_pagos.append({
+                                                "id_pago": f"P{num_p}-2025-{mes[:3].upper()}",
+                                                "parcela": num_p,
+                                                "mes": mes,
+                                                "ano": 2025,
+                                                "monto": int(val),
+                                                "estado": "Aprobado",
+                                                "link_comprobante": "https://dummyimage.com/600x400/000/fff&text=Migrado+Excel+2025"
+                                            })
+                            except Exception as ex:
+                                st.warning(f"No se pudo leer Cuotas 2025: {ex}")
+
                             if registros_pagos:
                                 supabase.table("registro_pagos").upsert(registros_pagos).execute()
 
-                            excel_bytes.seek(0)
-                            
-                            df_g = pd.read_excel(excel_bytes, sheet_name="Gastos")
-                            registros_gastos = []
-                            for index, row in df_g.iterrows():
-                                fecha = row.get("Fecha")
-                                motivo = row.get("Motivo")
-                                monto = row.get("Monto")
-                                forma_pago = row.get("Forma de Pago")
-                                link_comp = row.get("Link Comprobante")
+                            # 3. Migrar Gastos
+                            try:
+                                excel_bytes.seek(0)
+                                df_g = pd.read_excel(excel_bytes, sheet_name="Gastos")
+                                registros_gastos = []
+                                for index, row in df_g.iterrows():
+                                    fecha = row.get("Fecha")
+                                    motivo = row.get("Motivo")
+                                    monto = row.get("Monto")
+                                    forma_pago = row.get("Forma de Pago")
+                                    link_comp = row.get("Link Comprobante")
 
-                                if pd.notna(motivo) and pd.notna(monto):
-                                    registros_gastos.append({
-                                        "fecha": str(fecha).split(" ")[0] if pd.notna(fecha) else "2026-01-01",
-                                        "motivo": str(motivo),
-                                        "monto": int(monto),
-                                        "forma_pago": str(forma_pago) if pd.notna(forma_pago) else "Pagado directamente con fondos GC",
-                                        "link_comprobante": str(link_comp) if pd.notna(link_comp) else ""
-                                    })
-                            
-                            if registros_gastos:
-                                supabase.table("registro_gastos").upsert(registros_gastos).execute()
+                                    if pd.notna(motivo) and pd.notna(monto):
+                                        registros_gastos.append({
+                                            "fecha": str(fecha).split(" ")[0] if pd.notna(fecha) else "2025-01-01",
+                                            "motivo": str(motivo),
+                                            "monto": int(monto),
+                                            "forma_pago": str(forma_pago) if pd.notna(forma_pago) else "Pagado directamente con fondos GC",
+                                            "link_comprobante": str(link_comp) if pd.notna(link_comp) else ""
+                                        })
+                                
+                                if registros_gastos:
+                                    supabase.table("registro_gastos").upsert(registros_gastos).execute()
+                            except Exception as ex:
+                                st.warning(f"No se pudo leer la pestaña de Gastos: {ex}")
 
-                        st.success("¡Migración completada con éxito! Todos los datos históricos ya están en Supabase.")
+                        st.success("¡Migración histórica completa con éxito! Los datos de 2025, 2026 y Gastos ya están en Supabase.")
                         cargar_datos.clear()
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Error durante la migración: {e}")
+                        st.error(f"Error general durante la migración: {e}")
 
     # ----------------------------------------
     # VISTA VECINO
