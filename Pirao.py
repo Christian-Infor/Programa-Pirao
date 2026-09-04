@@ -1,29 +1,28 @@
 import streamlit as st
 import pandas as pd
+from supabase import create_client, Client
 
-# Configuración básica de la página
-st.set_page_config(page_title="Gastos Comunes - Alto Pirao", layout="centered")
+# --- CONEXIÓN A SUPABASE ---
+@st.cache_resource
+def init_connection():
+    url = st.secrets["https://cstbrwogphdawjvekdak.supabase.co"]
+    key = st.secrets["sb_publishable_rvlxhUBemfe7UmhrxowU6w_1x5RDHZc"]
+    return create_client(url, key)
 
-# --- 1. SIMULACIÓN DE BASE DE DATOS (Luego conectaremos Google Sheets) ---
-@st.cache_data
+supabase = init_connection()
+
+# --- CARGA DE DATOS REALES ---
+@st.cache_data(ttl=60) # Refresca los datos cada 60 segundos
 def cargar_datos():
-    # Pestaña oculta: Directorio de contraseñas
-    directorio = pd.DataFrame({
-        "Parcela": ["1", "2", "3", "Admin"],
-        "PIN": ["1111", "2222", "3333", "9999"]
-    })
+    # Leer tabla directorio
+    respuesta_dir = supabase.table("directorio").select("*").execute()
+    df_directorio = pd.DataFrame(respuesta_dir.data)
     
-    # Pestaña visible: Registro de Pagos (Estructura vertical)
-    pagos = pd.DataFrame({
-        "ID Pago": ["P1-2026-01", "P2-2026-01", "P1-2026-02"],
-        "Parcela": ["1", "2", "1"],
-        "Mes": ["Enero", "Enero", "Febrero"],
-        "Año": [2026, 2026, 2026],
-        "Monto": [10000, 10000, 4000],
-        "Estado": ["Aprobado", "Pendiente", "Pendiente"],
-        "Link Comprobante": ["url_drive_1", "url_drive_2", "url_drive_3"]
-    })
-    return directorio, pagos
+    # Leer tabla de pagos
+    respuesta_pagos = supabase.table("registro_pagos").select("*").execute()
+    df_pagos = pd.DataFrame(respuesta_pagos.data)
+    
+    return df_directorio, df_pagos
 
 df_directorio, df_pagos = cargar_datos()
 
