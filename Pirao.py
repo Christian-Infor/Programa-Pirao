@@ -147,6 +147,7 @@ else:
                             cargar_datos.clear()
                             st.rerun()
 
+        # --- PESTAÑA 2: MATRIZ ANUAL (Fase 3 - Corregida y Ordenada) ---
         with tab_matriz:
             st.subheader("Matriz de Estado de Cuotas (2026)")
             st.markdown("Vista cruzada de pagos aprobados por parcela y mes (Estilo Excel).")
@@ -154,13 +155,23 @@ else:
             if not df_pagos.empty:
                 df_aprobados = df_pagos[df_pagos["estado"] == "Aprobado"].copy()
                 if not df_aprobados.empty:
+                    # Convertimos parcela a entero temporalmente para ordenar numéricamente (1, 2, 3... 10, 11)
+                    df_aprobados["parcela_num"] = pd.to_numeric(df_aprobados["parcela"], errors="coerce")
+                    
                     meses_orden = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
                     
-                    matriz = df_aprobados.pivot_table(index="parcela", columns="mes", values="monto", fill_value=0)
+                    # Creamos la matriz agrupando y ordenando por la parcela numérica
+                    matriz = df_aprobados.pivot_table(index="parcela_num", columns="mes", values="monto", fill_value=0)
+                    
+                    # Renombramos el índice para que vuelva a decir "Parcela X" o simplemente el número limpio ordenado
+                    matriz.index = [f"Parcela {int(p)}" for p in matriz.index]
+                    
                     meses_existentes = [m for m in meses_orden if m in matriz.columns]
                     matriz = matriz[meses_existentes]
                     
-                    st.dataframe(matriz, use_container_width=True)
+                    # Contenedor ancho especial para que la matriz respire sin apretarse
+                    with st.container():
+                        st.dataframe(matriz, use_container_width=True, height=500)
                 else:
                     st.info("Aún no hay pagos aprobados para construir la matriz.")
             else:
@@ -237,7 +248,6 @@ else:
                 column_config={"Comprobante": st.column_config.LinkColumn("Ver Comprobante")}
             )
 
-        # --- PESTAÑA 5: MIGRAR EXCEL DESDE EL NAVEGADOR ---
         with tab_migrar:
             st.subheader("⚡ Herramienta de Migración Histórica desde Excel")
             st.markdown("Sube tu archivo de Excel a continuación para importar automáticamente los pagos de **Cuotas 2026** y los registros de la pestaña **Gastos** a Supabase.")
@@ -250,7 +260,6 @@ else:
                         with st.spinner("Leyendo y migrando datos desde el Excel..."):
                             excel_bytes = io.BytesIO(archivo_excel.getvalue())
                             
-                            # 1. Migrar Cuotas 2026
                             df_cuotas = pd.read_excel(excel_bytes, sheet_name="Cuotas 2026")
                             df_cuotas.columns = [str(c).strip().lower() for c in df_cuotas.columns]
                             registros_pagos = []
@@ -270,7 +279,7 @@ else:
                                             "parcela": num_parcela,
                                             "mes": mes,
                                             "ano": 2026,
-                                            "monto": int(val),  # <--- CORREGIDO A ENTERO AQUÍ
+                                            "monto": int(val),
                                             "estado": "Aprobado",
                                             "link_comprobante": "https://dummyimage.com/600x400/000/fff&text=Migrado+desde+Excel"
                                         })
@@ -280,7 +289,6 @@ else:
 
                             excel_bytes.seek(0)
                             
-                            # 2. Migrar Gastos
                             df_g = pd.read_excel(excel_bytes, sheet_name="Gastos")
                             registros_gastos = []
                             for index, row in df_g.iterrows():
@@ -294,7 +302,7 @@ else:
                                     registros_gastos.append({
                                         "fecha": str(fecha).split(" ")[0] if pd.notna(fecha) else "2026-01-01",
                                         "motivo": str(motivo),
-                                        "monto": int(monto),  # <--- CORREGIDO A ENTERO AQUÍ
+                                        "monto": int(monto),
                                         "forma_pago": str(forma_pago) if pd.notna(forma_pago) else "Pagado directamente con fondos GC",
                                         "link_comprobante": str(link_comp) if pd.notna(link_comp) else ""
                                     })
@@ -355,7 +363,7 @@ else:
                             "parcela": str(parcela_actual),
                             "mes": mes_pago,
                             "ano": 2026, 
-                            "monto": int(monto),  # <--- CORREGIDO A ENTERO AQUÍ
+                            "monto": int(monto),
                             "estado": "Pendiente",
                             "link_comprobante": link_publico
                         }
