@@ -102,7 +102,6 @@ else:
     
     parcela_actual = st.session_state["parcela"]
     
-    # Preparamos el DataFrame visual de pagos aplicando formato chileno a los montos
     df_visual = df_pagos.drop(columns=["id", "id_pago"], errors='ignore').copy()
     if not df_visual.empty and "monto" in df_visual.columns:
         df_visual["monto"] = df_visual["monto"].apply(formato_clp)
@@ -158,7 +157,7 @@ else:
                             cargar_datos.clear()
                             st.rerun()
 
-        # --- PESTAÑA 2: MATRIZ ANUAL (Con formato monetario chileno) ---
+        # --- PESTAÑA 2: MATRIZ ANUAL (Corregido con .map()) ---
         with tab_matriz:
             st.subheader("Matriz de Estado de Cuotas")
             ano_seleccionado = st.selectbox("Seleccione el Año a Visualizar", [2026, 2025], index=0)
@@ -174,8 +173,8 @@ else:
                     meses_existentes = [m for m in meses_orden if m in matriz.columns]
                     matriz = matriz[meses_existentes]
                     
-                    # Aplicamos formato CLP a cada celda de la matriz
-                    matriz_formateada = matriz.applymap(formato_clp)
+                    # Usamos .map() en lugar de applymap()
+                    matriz_formateada = matriz.map(formato_clp)
                     
                     with st.container():
                         st.dataframe(matriz_formateada, use_container_width=True, height=500)
