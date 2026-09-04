@@ -91,13 +91,11 @@ else:
         st.title("🛠️ Panel de Administración - Alto Pirao")
         
         st.subheader("Pagos Pendientes de Aprobación")
-        # Usamos df_pagos (el original) para tener acceso a la columna 'id' para la base de datos
         df_pendientes = df_pagos[df_pagos["estado"] == "Pendiente"]
         
         if df_pendientes.empty:
             st.success("No hay pagos pendientes por revisar.")
         else:
-            # Iteramos sobre cada pago pendiente para crear botones individuales
             for index, fila in df_pendientes.iterrows():
                 with st.container(border=True):
                     col1, col2, col3, col4 = st.columns(4)
@@ -122,6 +120,7 @@ else:
         st.dataframe(
             df_visual, 
             use_container_width=True,
+            hide_index=True, # <--- Índice oculto aquí
             column_config={"Comprobante": st.column_config.LinkColumn("Ver Comprobante")}
         )
 
@@ -140,6 +139,7 @@ else:
             st.dataframe(
                 mis_pagos, 
                 use_container_width=True,
+                hide_index=True, # <--- Índice oculto aquí
                 column_config={"Comprobante": st.column_config.LinkColumn("Ver Comprobante")}
             )
         
