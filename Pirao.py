@@ -3,14 +3,13 @@ import pandas as pd
 from supabase import create_client, Client
 from datetime import date
 
-# --- 1. CONFIGURACIÓN BÁSICA (Centrado para que el login y vecinos se vean ordenados) ---
+# --- 1. CONFIGURACIÓN BÁSICA ---
 st.set_page_config(page_title="Gastos Comunes - Alto Pirao v1.0", layout="centered")
 
-# --- 1.1 ESTILOS CSS PERSONALIZADOS (Para agrandar letras y ajustar anchos de Admin) ---
+# --- 1.1 ESTILOS CSS PERSONALIZADOS ---
 st.markdown(
     """
     <style>
-        /* Aumentar tamaño de fuente general */
         html, body, [class*="css"] {
             font-size: 18px !important;
         }
@@ -23,7 +22,6 @@ st.markdown(
         h3 {
             font-size: 1.4rem !important;
         }
-        /* Ajustar el formulario de login para que no sea exageradamente ancho si se usa en pantallas grandes */
         .stForm {
             padding: 20px;
         }
@@ -109,16 +107,17 @@ else:
     )
     
     # ----------------------------------------
-    # VISTA ADMINISTRADOR (Ampliamos el contenedor principal usando st.container con ancho expandido si es necesario)
+    # VISTA ADMINISTRADOR
     # ----------------------------------------
     if parcela_actual == "Admin":
         st.title("🛠️ Panel de Administración - Alto Pirao v1.0")
         
-        tab_pendientes, tab_matriz, tab_gastos, tab_historial = st.tabs([
+        tab_pendientes, tab_matriz, tab_gastos, tab_historial, tab_migrar = st.tabs([
             "📥 Validar Pagos", 
             "📊 Matriz Anual (Cuotas)", 
             "💸 Registrar Gastos (Egresos)", 
-            "📜 Historial General"
+            "📜 Historial General",
+            "⚙️ Migrar Excel"
         ])
         
         with tab_pendientes:
@@ -160,7 +159,6 @@ else:
                     meses_existentes = [m for m in meses_orden if m in matriz.columns]
                     matriz = matriz[meses_existentes]
                     
-                    # Usamos un contenedor ancho exclusivo para la matriz para que no se apriete
                     st.dataframe(matriz, use_container_width=True)
                 else:
                     st.info("Aún no hay pagos aprobados para construir la matriz.")
@@ -184,14 +182,13 @@ else:
                 if submit_gasto:
                     if motivo_gasto and monto_gasto > 0:
                         link_pub_boleta = ""
-                        
                         if archivo_boleta is not None:
                             with st.spinner("Subiendo boleta a Supabase..."):
                                 ruta_boleta = f"gastos_{fecha_gasto}_{archivo_boleta.name}"
                                 supabase.storage.from_("boletas-gastos").upload(
                                     path=ruta_boleta,
                                     file=archivo_boleta.getvalue(),
-                                    file_options={"content-type": archivo_boleta.type, "x-upsert": "true"}
+                                    file_options={"content-type": archivo.type, "x-upsert": "true"}
                                 )
                                 link_pub_boleta = supabase.storage.from_("boletas-gastos").get_public_url(ruta_boleta)
                         
@@ -239,8 +236,73 @@ else:
                 column_config={"Comprobante": st.column_config.LinkColumn("Ver Comprobante")}
             )
 
+        # --- PESTAÑA 5: MIGRAR EXCEL AUTOMÁTICO ---
+        with tab_migrar:
+            st.subheader("⚡ Herramienta de Migración Histórica desde Excel")
+            st.markdown("Haz clic en el botón de abajo para importar automáticamente los pagos de **Cuotas 2026** y los registros de la pestaña **Gastos** directamente a Supabase.")
+            
+            if st.button("🚀 Ejecutar Migración de Excel"):
+                excel_path = "Alto Pirao - Gasto Común.xlsx"
+                try:
+                    with st.spinner("Leyendo y migrando datos desde el Excel..."):
+                        # 1. Migrar Cuotas 2026
+                        df_cuotas = pd.read_excel(excel_path, sheet_name="Cuotas 2026")
+                        df_cuotas.columns = [str(c).strip().lower() for c in df_cuotas.columns]
+                        registros_pagos = []
+                        
+                        for index, row in df_cuotas.iterrows():
+                            parcela_nombre = row.iloc[0]
+                            if pd.isna(parcela_nombre) or "Parcela" not in str(parcela_nombre):
+                                continue
+                            num_parcela = str(parcela_nombre).replace("Parcela", "").strip()
+                            meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+                            
+                            for i, mes in enumerate(meses):
+                                val = row.iloc[i + 1]
+                                if pd.notna(val) and isinstance(val, (int, float)) and val > 0:
+                                    registros_pagos.append({
+                                        "id_pago": f"P{num_parcela}-2026-{mes[:3].upper()}",
+                                        "parcela": num_parcela,
+                                        "mes": mes,
+                                        "ano": 2026,
+                                        "monto": float(val),
+                                        "estado": "Aprobado",
+                                        "link_comprobante": "https://dummyimage.com/600x400/000/fff&text=Migrado+desde+Excel"
+                                    })
+                        
+                        if registros_pagos:
+                            supabase.table("registro_pagos").upsert(registros_pagos).execute()
+
+                        # 2. Migrar Gastos
+                        df_g = pd.read_excel(excel_path, sheet_name="Gastos")
+                        registros_gastos = []
+                        for index, row in df_g.iterrows():
+                            fecha = row.get("Fecha")
+                            motivo = row.get("Motivo")
+                            monto = row.get("Monto")
+                            forma_pago = row.get("Forma de Pago")
+                            link_comp = row.get("Link Comprobante")
+
+                            if pd.notna(motivo) and pd.notna(monto):
+                                registros_gastos.append({
+                                    "fecha": str(fecha).split(" ")[0] if pd.notna(fecha) else "2026-01-01",
+                                    "motivo": str(motivo),
+                                    "monto": float(monto),
+                                    "forma_pago": str(forma_pago) if pd.notna(forma_pago) else "Pagado directamente con fondos GC",
+                                    "link_comprobante": str(link_comp) if pd.notna(link_comp) else ""
+                                })
+                        
+                        if registros_gastos:
+                            supabase.table("registro_gastos").upsert(registros_gastos).execute()
+
+                    st.success("¡Migración completada con éxito! Todos los datos históricos del Excel ya están en Supabase.")
+                    cargar_datos.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error durante la migración: {e}")
+
     # ----------------------------------------
-    # VISTA VECINO (Se mantiene centrada y limpia)
+    # VISTA VECINO
     # ----------------------------------------
     else:
         st.title(f"🏡 Panel de Parcela {parcela_actual}")
