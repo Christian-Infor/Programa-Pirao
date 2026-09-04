@@ -3,8 +3,35 @@ import pandas as pd
 from supabase import create_client, Client
 from datetime import date
 
-# --- 1. CONFIGURACIÓN BÁSICA ---
-st.set_page_config(page_title="Gastos Comunes - Alto Pirao v1.0", layout="centered")
+# --- 1. CONFIGURACIÓN BÁSICA (Cambiado a "wide" para expandir la pantalla) ---
+st.set_page_config(page_title="Gastos Comunes - Alto Pirao v1.0", layout="wide")
+
+# --- 1.1 ESTILOS CSS PERSONALIZADOS (Para agrandar las letras y la interfaz) ---
+st.markdown(
+    """
+    <style>
+        /* Aumentar tamaño de fuente general de los textos, inputs y pestañas */
+        html, body, [class*="css"] {
+            font-size: 18px !important;
+        }
+        /* Agrandar títulos principales */
+        h1 {
+            font-size: 2.5rem !important;
+        }
+        h2 {
+            font-size: 2rem !important;
+        }
+        h3 {
+            font-size: 1.5rem !important;
+        }
+        /* Expandir un poco más los contenedores de formularios */
+        .stForm {
+            padding: 20px;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # --- 2. CONEXIÓN A SUPABASE ---
 @st.cache_resource
@@ -152,7 +179,6 @@ else:
         with tab_gastos:
             st.subheader("Control de Gastos y Egresos del Condominio")
             
-            # Formulario para registrar un nuevo gasto con opción de adjuntar boleta
             with st.form("form_nuevo_gasto"):
                 col_g1, col_g2 = st.columns(2)
                 fecha_gasto = col_g1.date_input("Fecha del gasto", value=date.today())
@@ -168,7 +194,6 @@ else:
                     if motivo_gasto and monto_gasto > 0:
                         link_pub_boleta = ""
                         
-                        # Si el admin adjuntó un archivo, lo subimos al bucket 'boletas-gastos'
                         if archivo_boleta is not None:
                             with st.spinner("Subiendo boleta a Supabase..."):
                                 ruta_boleta = f"gastos_{fecha_gasto}_{archivo_boleta.name}"
