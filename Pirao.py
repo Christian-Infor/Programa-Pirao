@@ -3,28 +3,27 @@ import pandas as pd
 from supabase import create_client, Client
 from datetime import date
 
-# --- 1. CONFIGURACIÓN BÁSICA (Cambiado a "wide" para expandir la pantalla) ---
-st.set_page_config(page_title="Gastos Comunes - Alto Pirao v1.0", layout="wide")
+# --- 1. CONFIGURACIÓN BÁSICA (Centrado para que el login y vecinos se vean ordenados) ---
+st.set_page_config(page_title="Gastos Comunes - Alto Pirao v1.0", layout="centered")
 
-# --- 1.1 ESTILOS CSS PERSONALIZADOS (Para agrandar las letras y la interfaz) ---
+# --- 1.1 ESTILOS CSS PERSONALIZADOS (Para agrandar letras y ajustar anchos de Admin) ---
 st.markdown(
     """
     <style>
-        /* Aumentar tamaño de fuente general de los textos, inputs y pestañas */
+        /* Aumentar tamaño de fuente general */
         html, body, [class*="css"] {
             font-size: 18px !important;
         }
-        /* Agrandar títulos principales */
         h1 {
-            font-size: 2.5rem !important;
+            font-size: 2.3rem !important;
         }
         h2 {
-            font-size: 2rem !important;
+            font-size: 1.8rem !important;
         }
         h3 {
-            font-size: 1.5rem !important;
+            font-size: 1.4rem !important;
         }
-        /* Expandir un poco más los contenedores de formularios */
+        /* Ajustar el formulario de login para que no sea exageradamente ancho si se usa en pantallas grandes */
         .stForm {
             padding: 20px;
         }
@@ -45,15 +44,12 @@ supabase = init_connection()
 # --- 3. CARGA DE DATOS SEGUROS ---
 @st.cache_data(ttl=60)
 def cargar_datos():
-    # Directorio
     respuesta_dir = supabase.table("directorio").select("*").execute()
     df_directorio = pd.DataFrame(respuesta_dir.data) if respuesta_dir.data else pd.DataFrame(columns=["parcela", "pin"])
     
-    # Pagos (Ingresos)
     respuesta_pagos = supabase.table("registro_pagos").select("*").execute()
     df_pagos = pd.DataFrame(respuesta_pagos.data) if respuesta_pagos.data else pd.DataFrame(columns=["id", "id_pago", "parcela", "mes", "ano", "monto", "estado", "link_comprobante"])
     
-    # Gastos (Egresos)
     respuesta_gastos = supabase.table("registro_gastos").select("*").execute()
     df_gastos = pd.DataFrame(respuesta_gastos.data) if respuesta_gastos.data else pd.DataFrame(columns=["id", "fecha", "motivo", "monto", "forma_pago", "link_comprobante"])
     
@@ -95,14 +91,12 @@ if not st.session_state["autenticado"]:
 
 # --- 6. PANTALLA PRINCIPAL ---
 else:
-    # Barra lateral con Versión v1.0
     st.sidebar.title(f"Bienvenido, Parcela {st.session_state['parcela']}")
     st.sidebar.caption("Software de Gestión - Alto Pirao **v1.0**")
     st.sidebar.button("Cerrar Sesión", on_click=cerrar_sesion)
     
     parcela_actual = st.session_state["parcela"]
     
-    # DataFrame Visual de Pagos (Sin IDs técnicos)
     df_visual = df_pagos.drop(columns=["id", "id_pago"], errors='ignore').rename(
         columns={
             "parcela": "Parcela",
@@ -115,12 +109,11 @@ else:
     )
     
     # ----------------------------------------
-    # VISTA ADMINISTRADOR
+    # VISTA ADMINISTRADOR (Ampliamos el contenedor principal usando st.container con ancho expandido si es necesario)
     # ----------------------------------------
     if parcela_actual == "Admin":
         st.title("🛠️ Panel de Administración - Alto Pirao v1.0")
         
-        # Pestañas de navegación para el Admin
         tab_pendientes, tab_matriz, tab_gastos, tab_historial = st.tabs([
             "📥 Validar Pagos", 
             "📊 Matriz Anual (Cuotas)", 
@@ -128,7 +121,6 @@ else:
             "📜 Historial General"
         ])
         
-        # --- PESTAÑA 1: VALIDAR PAGOS PENDIENTES ---
         with tab_pendientes:
             st.subheader("Pagos Pendientes de Aprobación")
             df_pendientes = df_pagos[df_pagos["estado"] == "Pendiente"]
@@ -155,7 +147,6 @@ else:
                             cargar_datos.clear()
                             st.rerun()
 
-        # --- PESTAÑA 2: MATRIZ ANUAL (Fase 3) ---
         with tab_matriz:
             st.subheader("Matriz de Estado de Cuotas (2026)")
             st.markdown("Vista cruzada de pagos aprobados por parcela y mes (Estilo Excel).")
@@ -169,13 +160,13 @@ else:
                     meses_existentes = [m for m in meses_orden if m in matriz.columns]
                     matriz = matriz[meses_existentes]
                     
+                    # Usamos un contenedor ancho exclusivo para la matriz para que no se apriete
                     st.dataframe(matriz, use_container_width=True)
                 else:
                     st.info("Aún no hay pagos aprobados para construir la matriz.")
             else:
                 st.info("No hay registros en la base de datos.")
 
-        # --- PESTAÑA 3: GASTOS / EGRESOS (Fase 2) ---
         with tab_gastos:
             st.subheader("Control de Gastos y Egresos del Condominio")
             
@@ -239,7 +230,6 @@ else:
             else:
                 st.info("No hay gastos registrados todavía.")
 
-        # --- PESTAÑA 4: HISTORIAL GENERAL DE PAGOS ---
         with tab_historial:
             st.subheader("Todos los registros de pagos")
             st.dataframe(
@@ -250,7 +240,7 @@ else:
             )
 
     # ----------------------------------------
-    # VISTA VECINO
+    # VISTA VECINO (Se mantiene centrada y limpia)
     # ----------------------------------------
     else:
         st.title(f"🏡 Panel de Parcela {parcela_actual}")
