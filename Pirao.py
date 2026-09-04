@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
+from datetime import date
 
 # --- 1. CONFIGURACIÓN BÁSICA ---
-st.set_page_config(page_title="Gastos Comunes - Alto Pirao", layout="centered")
+st.set_page_config(page_title="Gastos Comunes - Alto Pirao v1.0", layout="centered")
 
 # --- 2. CONEXIÓN A SUPABASE ---
 @st.cache_resource
@@ -17,21 +18,21 @@ supabase = init_connection()
 # --- 3. CARGA DE DATOS SEGUROS ---
 @st.cache_data(ttl=60)
 def cargar_datos():
+    # Directorio
     respuesta_dir = supabase.table("directorio").select("*").execute()
-    if respuesta_dir.data:
-        df_directorio = pd.DataFrame(respuesta_dir.data)
-    else:
-        df_directorio = pd.DataFrame(columns=["parcela", "pin"])
+    df_directorio = pd.DataFrame(respuesta_dir.data) if respuesta_dir.data else pd.DataFrame(columns=["parcela", "pin"])
     
+    # Pagos (Ingresos)
     respuesta_pagos = supabase.table("registro_pagos").select("*").execute()
-    if respuesta_pagos.data:
-        df_pagos = pd.DataFrame(respuesta_pagos.data)
-    else:
-        df_pagos = pd.DataFrame(columns=["id", "id_pago", "parcela", "mes", "ano", "monto", "estado", "link_comprobante"])
+    df_pagos = pd.DataFrame(respuesta_pagos.data) if respuesta_pagos.data else pd.DataFrame(columns=["id", "id_pago", "parcela", "mes", "ano", "monto", "estado", "link_comprobante"])
     
-    return df_directorio, df_pagos
+    # Gastos (Egresos)
+    respuesta_gastos = supabase.table("registro_gastos").select("*").execute()
+    df_gastos = pd.DataFrame(respuesta_gastos.data) if respuesta_gastos.data else pd.DataFrame(columns=["id", "fecha", "motivo", "monto", "forma_pago", "link_comprobante"])
+    
+    return df_directorio, df_pagos, df_gastos
 
-df_directorio, df_pagos = cargar_datos()
+df_directorio, df_pagos, df_gastos = cargar_datos()
 
 # --- 4. CONTROL DE SESIÓN ---
 if "autenticado" not in st.session_state:
@@ -67,12 +68,14 @@ if not st.session_state["autenticado"]:
 
 # --- 6. PANTALLA PRINCIPAL ---
 else:
+    # Barra lateral con Versión v1.0
     st.sidebar.title(f"Bienvenido, Parcela {st.session_state['parcela']}")
+    st.sidebar.caption("Software de Gestión - Alto Pirao **v1.0**")
     st.sidebar.button("Cerrar Sesión", on_click=cerrar_sesion)
     
     parcela_actual = st.session_state["parcela"]
     
-    # DataFrame Visual (Sin IDs técnicos)
+    # DataFrame Visual de Pagos (Sin IDs técnicos)
     df_visual = df_pagos.drop(columns=["id", "id_pago"], errors='ignore').rename(
         columns={
             "parcela": "Parcela",
@@ -88,41 +91,116 @@ else:
     # VISTA ADMINISTRADOR
     # ----------------------------------------
     if parcela_actual == "Admin":
-        st.title("🛠️ Panel de Administración - Alto Pirao")
+        st.title("🛠️ Panel de Administración - Alto Pirao v1.0")
         
-        st.subheader("Pagos Pendientes de Aprobación")
-        df_pendientes = df_pagos[df_pagos["estado"] == "Pendiente"]
+        # Pestañas de navegación para el Admin
+        tab_pendientes, tab_matriz, tab_gastos, tab_historial = st.tabs([
+            "📥 Validar Pagos", 
+            "📊 Matriz Anual (Cuotas)", 
+            "💸 Registrar Gastos (Egresos)", 
+            "📜 Historial General"
+        ])
         
-        if df_pendientes.empty:
-            st.success("No hay pagos pendientes por revisar.")
-        else:
-            for index, fila in df_pendientes.iterrows():
-                with st.container(border=True):
-                    col1, col2, col3, col4 = st.columns(4)
-                    col1.write(f"**Parcela:** {fila['parcela']}")
-                    col2.write(f"**Mes:** {fila['mes']}")
-                    col3.write(f"**Monto:** ${fila['monto']}")
-                    col4.markdown(f"[📎 Ver Comprobante]({fila['link_comprobante']})")
-                    
-                    btn_col1, btn_col2 = st.columns(2)
-                    if btn_col1.button("✅ Aprobar", key=f"aprobar_{fila['id']}", use_container_width=True):
-                        supabase.table("registro_pagos").update({"estado": "Aprobado"}).eq("id", fila['id']).execute()
-                        cargar_datos.clear()
-                        st.rerun()
-                        
-                    if btn_col2.button("❌ Rechazar", key=f"rechazar_{fila['id']}", use_container_width=True):
-                        supabase.table("registro_pagos").update({"estado": "Rechazado"}).eq("id", fila['id']).execute()
-                        cargar_datos.clear()
-                        st.rerun()
+        # --- PESTAÑA 1: VALIDAR PAGOS PENDIENTES ---
+        with tab_pendientes:
+            st.subheader("Pagos Pendientes de Aprobación")
+            df_pendientes = df_pagos[df_pagos["estado"] == "Pendiente"]
             
-        st.divider()
-        st.subheader("Todos los registros (Historial histórico)")
-        st.dataframe(
-            df_visual, 
-            use_container_width=True,
-            hide_index=True, # <--- Índice oculto aquí
-            column_config={"Comprobante": st.column_config.LinkColumn("Ver Comprobante")}
-        )
+            if df_pendientes.empty:
+                st.success("No hay pagos pendientes por revisar.")
+            else:
+                for index, fila in df_pendientes.iterrows():
+                    with st.container(border=True):
+                        col1, col2, col3, col4 = st.columns(4)
+                        col1.write(f"**Parcela:** {fila['parcela']}")
+                        col2.write(f"**Mes:** {fila['mes']}")
+                        col3.write(f"**Monto:** ${fila['monto']}")
+                        col4.markdown(f"[📎 Ver Comprobante]({fila['link_comprobante']})")
+                        
+                        btn_col1, btn_col2 = st.columns(2)
+                        if btn_col1.button("✅ Aprobar", key=f"aprobar_{fila['id']}", use_container_width=True):
+                            supabase.table("registro_pagos").update({"estado": "Aprobado"}).eq("id", fila['id']).execute()
+                            cargar_datos.clear()
+                            st.rerun()
+                            
+                        if btn_col2.button("❌ Rechazar", key=f"rechazar_{fila['id']}", use_container_width=True):
+                            supabase.table("registro_pagos").update({"estado": "Rechazado"}).eq("id", fila['id']).execute()
+                            cargar_datos.clear()
+                            st.rerun()
+
+        # --- PESTAÑA 2: MATRIZ ANUAL (Fase 3) ---
+        with tab_matriz:
+            st.subheader("Matriz de Estado de Cuotas (2026)")
+            st.markdown("Vista cruzada de pagos aprobados por parcela y mes (Estilo Excel).")
+            
+            if not df_pagos.empty:
+                # Filtramos solo los aprobados para la matriz contable
+                df_aprobados = df_pagos[df_pagos["estado"] == "Aprobado"].copy()
+                if not df_aprobados.empty:
+                    # Creamos la tabla pivote (Matriz)
+                    meses_orden = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+                    
+                    # Pivot table: Filas = Parcela, Columnas = Mes, Valores = Monto
+                    matriz = df_aprobados.pivot_table(index="parcela", columns="mes", values="monto", fill_value=0)
+                    
+                    # Reindexar para ordenar los meses cronológicamente si existen
+                    meses_existentes = [m for m in meses_orden if m in matriz.columns]
+                    matriz = matriz[meses_existentes]
+                    
+                    st.dataframe(matriz, use_container_width=True)
+                else:
+                    st.info("Aún no hay pagos aprobados para construir la matriz.")
+            else:
+                st.info("No hay registros en la base de datos.")
+
+        # --- PESTAÑA 3: GASTOS / EGRESOS (Fase 2) ---
+        with tab_gastos:
+            st.subheader("Control de Gastos y Egresos del Condominio")
+            
+            # Formulario para registrar un nuevo gasto
+            with st.form("form_nuevo_gasto"):
+                col_g1, col_g2 = st.columns(2)
+                fecha_gasto = col_g1.date_input("Fecha del gasto", value=date.today())
+                monto_gasto = col_g2.number_input("Monto del gasto ($)", min_value=0, step=1000)
+                
+                motivo_gasto = st.text_input("Motivo o Detalle (Ej: CGE Electricidad, Compra de cámaras)")
+                forma_pago_gasto = st.selectbox("Forma de pago", ["Pagado directamente con fondos GC", "Reembolsado a Parcela"])
+                link_comp_gasto = st.text_input("Link del comprobante o boleta (Opcional)")
+                
+                submit_gasto = st.form_submit_button("Guardar Gasto")
+                
+                if submit_gasto:
+                    if motivo_gasto and monto_gasto > 0:
+                        nuevo_gasto_dict = {
+                            "fecha": str(fecha_gasto),
+                            "motivo": motivo_gasto,
+                            "monto": monto_gasto,
+                            "forma_pago": forma_pago_gasto,
+                            "link_comprobante": link_comp_gasto
+                        }
+                        supabase.table("registro_gastos").insert(nuevo_gasto_dict).execute()
+                        st.success("¡Gasto registrado exitosamente!")
+                        cargar_datos.clear()
+                        st.rerun()
+                    else:
+                        st.error("Por favor completa el motivo y un monto válido.")
+            
+            st.divider()
+            st.markdown("### Historial de Egresos Registrados")
+            if not df_gastos.empty:
+                st.dataframe(df_gastos.drop(columns=["id"], errors="ignore"), use_container_width=True, hide_index=True)
+            else:
+                st.info("No hay gastos registrados todavía.")
+
+        # --- PESTAÑA 4: HISTORIAL GENERAL DE PAGOS ---
+        with tab_historial:
+            st.subheader("Todos los registros de pagos")
+            st.dataframe(
+                df_visual, 
+                use_container_width=True,
+                hide_index=True,
+                column_config={"Comprobante": st.column_config.LinkColumn("Ver Comprobante")}
+            )
 
     # ----------------------------------------
     # VISTA VECINO
@@ -130,7 +208,7 @@ else:
     else:
         st.title(f"🏡 Panel de Parcela {parcela_actual}")
         
-        st.subheader("Historial de Pagos")
+        st.subheader("Historial de Mis Pagos")
         mis_pagos = df_visual[df_visual["Parcela"] == parcela_actual]
         
         if mis_pagos.empty:
@@ -139,11 +217,12 @@ else:
             st.dataframe(
                 mis_pagos, 
                 use_container_width=True,
-                hide_index=True, # <--- Índice oculto aquí
+                hide_index=True,
                 column_config={"Comprobante": st.column_config.LinkColumn("Ver Comprobante")}
             )
         
         st.divider()
+        
         st.subheader("Informar Nuevo Pago")
         with st.form("form_nuevo_pago"):
             mes_pago = st.selectbox("Mes a pagar", ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"])
