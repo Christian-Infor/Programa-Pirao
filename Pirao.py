@@ -101,11 +101,24 @@ else:
         if df_pendientes.empty:
             st.success("No hay pagos pendientes por revisar.")
         else:
-            st.dataframe(df_pendientes, use_container_width=True)
-            st.info("Aquí agregaremos la lógica para cambiar el estado de 'Pendiente' a 'Aprobado'.")
+            # Formateamos el DataFrame para que el link sea clickeable
+            st.dataframe(
+                df_pendientes, 
+                use_container_width=True,
+                column_config={
+                    "Comprobante": st.column_config.LinkColumn("Ver Comprobante")
+                }
+            )
+            st.info("Próximamente: lógica para aprobar pagos directamente desde aquí.")
             
         st.subheader("Todos los registros (Historial histórico)")
-        st.dataframe(df_visual, use_container_width=True)
+        st.dataframe(
+            df_visual, 
+            use_container_width=True,
+            column_config={
+                "Comprobante": st.column_config.LinkColumn("Ver Comprobante")
+            }
+        )
 
     # VISTA VECINO
     else:
@@ -118,7 +131,13 @@ else:
         if mis_pagos.empty:
             st.info("Aún no tienes pagos registrados en el sistema.")
         else:
-            st.dataframe(mis_pagos, use_container_width=True)
+            st.dataframe(
+                mis_pagos, 
+                use_container_width=True,
+                column_config={
+                    "Comprobante": st.column_config.LinkColumn("Ver Comprobante")
+                }
+            )
         
         st.divider()
         
@@ -131,4 +150,36 @@ else:
             submit_pago = st.form_submit_button("Enviar Comprobante")
             
             if submit_pago:
-                st.success("Esta función subirá el archivo a Supabase y registrará el pago.")
+                if archivo is not None:
+                    with st.spinner("Procesando pago y subiendo archivo..."):
+                        # 1. Armar la ruta del archivo (Ej: parcela_1/Enero_comprobante.pdf)
+                        ruta_archivo = f"parcela_{parcela_actual}/{mes_pago}_{archivo.name}"
+                        
+                        # 2. Subir el archivo al bucket 'comprobantes' de Supabase
+                        supabase.storage.from_("comprobantes").upload(
+                            path=ruta_archivo,
+                            file=archivo.getvalue(),
+                            file_options={"content-type": archivo.type}
+                        )
+                        
+                        # 3. Obtener el link público del archivo recién subido
+                        link_publico = supabase.storage.from_("comprobantes").get_public_url(ruta_archivo)
+                        
+                        # 4. Crear el registro para la tabla SQL
+                        nuevo_registro = {
+                            "id_pago": f"P{parcela_actual}-2026-{mes_pago[:3].upper()}",
+                            "parcela": str(parcela_actual),
+                            "mes": mes_pago,
+                            "ano": 2026, # Registramos el año actual
+                            "monto": monto,
+                            "estado": "Pendiente",
+                            "link_comprobante": link_publico
+                        }
+                        # 5. Insertar los datos en la tabla registro_pagos
+                        supabase.table("registro_pagos").insert(nuevo_registro).execute()
+                        
+                    st.success("¡Pago enviado exitosamente!")
+                    cargar_datos.clear() # Limpia la memoria para forzar la lectura del nuevo pago
+                    st.rerun() # Refresca la pantalla
+                else:
+                    st.error("⚠️ Por favor, adjunta un comprobante antes de enviar el formulario.")
