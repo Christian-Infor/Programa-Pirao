@@ -50,8 +50,8 @@ if not st.session_state["autenticado"]:
         if btn_ingresar:
             # Filtramos el dataframe para ver si existe coincidencia
             usuario_valido = df_directorio[
-                (df_directorio["Parcela"] == input_parcela) & 
-                (df_directorio["PIN"] == input_pin)
+                (df_directorio["parcela"] == input_parcela) & 
+                (df_directorio["pin"] == input_pin)
             ]
             
             if not usuario_valido.empty:
